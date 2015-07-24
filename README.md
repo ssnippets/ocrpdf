@@ -29,5 +29,5 @@ In python:
 from ocrpdf import ocr_pdf
 text = ocr_pdf('<filename>', <zoom_level>)
 ```
-Where <zoom_level> is an integer representing a percentage (100 = 100%) of how far to zoom into. If you're not
+Where zoom_level is an integer representing a percentage (100 = 100%) of how far to zoom into. If you're not
 getting great OCR results, consider zooming in.
