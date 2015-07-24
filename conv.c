@@ -33,12 +33,16 @@
 #include <tesseract/capi.h>
 #include <string.h>
 #include "conv.h"
+#include <regex.h>
+
+#define FNAME_FMT "%s_chip_%i.png" // string format str:filename, int:pagenum
 
 fz_context *ctx;
 fz_document *doc;
 TessBaseAPI *tessAPI;
 char* text;
-
+regex_t re;
+int has_re;
 void die(const char *errstr) {
     fputs(errstr, stderr);
     exit(1);
@@ -65,6 +69,7 @@ void _my_init(char* filename){
     // allocate a single element so we can consistently free:
     text = (char*) malloc(1*sizeof(char));
     text[0] = '\0';
+    has_re = 0;
 }
 
 
@@ -74,7 +79,11 @@ void _my_release(){
     fz_drop_context(ctx);
     TessBaseAPIEnd(tessAPI);
     TessBaseAPIDelete(tessAPI);
- //   free(text);
+    //   free(text);
+
+    if(has_re){
+        regfree(&re);
+    }
 }
 int get_pagecount(char* filename){
 
@@ -83,10 +92,9 @@ int get_pagecount(char* filename){
     pagecount = fz_count_pages(ctx, doc);
     return pagecount;
 }
-void
+    int
 render(char *filename, int pagenumber, int zoom, int rotation, int write_file, int do_chipout)
 {
-    //int pagecount;
     fz_page *page;
     fz_matrix transform;
     fz_rect bounds;
@@ -152,14 +160,29 @@ render(char *filename, int pagenumber, int zoom, int rotation, int write_file, i
     fz_run_page(ctx, page, dev, &transform, NULL);
     fz_drop_device(ctx, dev);
 
-    // Save the pixmap to a file.
-//    if(write_file){
-//        fz_write_png(ctx, pix, "/tmp/out.png", 0);
-//  }
-    text = readFromImage (pix);
+    char* tmptxt = readFromImage (pix);
+    concat_str(text, tmptxt);
 
+    int reti = 1;
+    if(has_re){
+        reti = regexec(&re, tmptxt, 0, NULL, 0);
+
+        if(!reti){
+            // Save the pixmap to a file.
+            int len = strlen(filename) + strlen(FNAME_FMT) + 32;
+            char* _tmpfname = (char*) malloc(len*sizeof(char));
+            sprintf(_tmpfname, FNAME_FMT, filename, pagenumber);
+            fz_write_png(ctx, pix, _tmpfname, 0);
+            free(_tmpfname);
+
+        }
+    }
+
+    TessDeleteText(tmptxt);
     fz_drop_pixmap(ctx, pix);
     fz_drop_page(ctx, page);
+
+    return reti; // 0 means match!
 }
 
 char* readFromImage(fz_pixmap *pix){
@@ -179,10 +202,10 @@ char* readFromImage(fz_pixmap *pix){
         die("Error in Tesseract recognition\n");
     if((imgtext = TessBaseAPIGetUTF8Text(tessAPI)) == NULL)
         die("Error getting text\n");
-    concat_str(text, imgtext);
-    TessDeleteText(imgtext);
+    //concat_str(text, imgtext);
+    //TessDeleteText(imgtext);
 
-    return text; // NEEDS CLEANED
+    return imgtext; // NEEDS CLEANED
 }
 
 //dynamically allocated string concatenation
@@ -199,30 +222,61 @@ char* iterate(char* filename, int zoom, int rotation){
     _my_init(filename);
     if(doc == NULL){
         text = (char*) malloc(32*sizeof(char));
-        strcpy(text, "Error: File does not exist");
+        strcpy(text, "Error: File does not exist\n");
         fz_drop_context(ctx);
         return text;
     }
     int page_count = get_pagecount(filename);
     int i;
     for(i = 0; i < page_count; i++){
-        render(filename, i, zoom, rotation, 0, 0);
+        render(filename, i, zoom, rotation, 1/*write_file*/, 0/*chipout*/);
     }
- //   fputs(text, stdout);
+    //   fputs(text, stdout);
 
     _my_release();
     return text;
 }
+
+void match_pdf_text(char* filename, char* regex, int zoom, int** rtv, int* size){
+    _my_init(filename);
+    // compile regex:
+    int reti = regcomp(&re, regex, REG_EXTENDED);
+    if (reti) {
+        fprintf(stderr, "Could not compile regex\n");
+        return;
+    }
+    has_re = 1;
+    if(doc == NULL){
+        text = (char*) malloc(32*sizeof(char));
+        strcpy(text, "Error: File does not exist\n");
+        fz_drop_context(ctx);
+        return;
+    }
+    int page_count = get_pagecount(filename);
+    int* _rtv = malloc(page_count*sizeof(int));
+    int i;
+    for(i = 0; i < page_count; i++){
+        int curr = render(filename, i, zoom, 0, 1/*write_file*/, 0/*chipout*/);
+        _rtv[i] = (int)curr;
+    }
+    _my_release();
+
+    free(text);
+
+    *size = page_count;
+    *rtv = _rtv;
+}
+
+
 int main(int argc, char **argv)
 {
     char *filename = argv[1];
     int zoom = 200;
     int rotation = 0;
-
-    text = iterate(filename, zoom, rotation);
-    printf("%s",text);
-    free(text);
+    //text = iterate(filename, zoom, rotation);
+    int* rtv;
+    int size;
+    match_pdf_text(filename, ".*Install.*", zoom, &rtv, &size);
     //render(filename, pagenumber, zoom, rotation);
-
     return 0;
 }
