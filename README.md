@@ -31,3 +31,9 @@ text = ocr_pdf('<filename>', <zoom_level>)
 ```
 Where zoom_level is an integer representing a percentage (100 = 100%) of how far to zoom into. If you're not
 getting great OCR results, consider zooming in.
+
+```
+from ocrpdf import ocr_match
+rtv = ocr_match('<filename>', '<regex>', <zoom_level>)
+```
+Will iterate through pages looking for a regex match and return a boolean tuple of pages where the string is found. It will also store png files in the same folder as the pdf.
