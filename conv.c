@@ -43,6 +43,7 @@ TessBaseAPI *tessAPI;
 char* text;
 regex_t re;
 int has_re;
+
 void die(const char *errstr) {
     fputs(errstr, stderr);
     exit(1);
@@ -93,8 +94,8 @@ int get_pagecount(char* filename){
     return pagecount;
 }
     int
-render(char *filename, int pagenumber, int zoom, int rotation, int write_file, int do_chipout)
-{
+render(char *filename, int pagenumber, int zoom, int rotation, int write_file,
+        int do_chipout){
     fz_page *page;
     fz_matrix transform;
     fz_rect bounds;
@@ -105,7 +106,7 @@ render(char *filename, int pagenumber, int zoom, int rotation, int write_file, i
     // Load the page we want. Page numbering starts from zero.
 
 
-    page = fz_load_page(ctx, doc, pagenumber ); //- 1);
+    page = fz_load_page(ctx, doc, pagenumber );
 
     // Calculate a transform to use when rendering. This transform
     // contains the scale and rotation. Convert zoom percentage to a
@@ -229,7 +230,8 @@ char* iterate(char* filename, int zoom, int rotation){
     int page_count = get_pagecount(filename);
     int i;
     for(i = 0; i < page_count; i++){
-        render(filename, i, zoom, rotation, 1/*write_file*/, 0/*chipout*/);
+        render(filename/*filename*/, i/*page*/, zoom/*zoom*/, 
+                rotation/*rotation*/, 1/*write_file*/, 0/*chipout*/);
     }
     //   fputs(text, stdout);
 
@@ -237,7 +239,8 @@ char* iterate(char* filename, int zoom, int rotation){
     return text;
 }
 
-void match_pdf_text(char* filename, char* regex, int zoom, int** rtv, int* size){
+void match_pdf_text(char* filename, char* regex, int zoom, int** rtv, 
+        int* size){
     _my_init(filename);
     // compile regex:
     int reti = regcomp(&re, regex, REG_EXTENDED);
@@ -256,7 +259,8 @@ void match_pdf_text(char* filename, char* regex, int zoom, int** rtv, int* size)
     int* _rtv = malloc(page_count*sizeof(int));
     int i;
     for(i = 0; i < page_count; i++){
-        int curr = render(filename, i, zoom, 0, 1/*write_file*/, 0/*chipout*/);
+        int curr = render(filename/*filename*/, i/*page*/, zoom/*zoom*/,
+                0/*rotation*/, 1/*write_file*/, 0/*chipout*/);
         _rtv[i] = (int)curr;
     }
     _my_release();
@@ -273,10 +277,15 @@ int main(int argc, char **argv)
     char *filename = argv[1];
     int zoom = 200;
     int rotation = 0;
-    //text = iterate(filename, zoom, rotation);
-    int* rtv;
-    int size;
-    match_pdf_text(filename, ".*Install.*", zoom, &rtv, &size);
-    //render(filename, pagenumber, zoom, rotation);
+
+    text = iterate(filename, zoom, rotation);
+    puts(text);
+    free(text);
+
+    //Matching text in page:
+    //int* rtv;
+    //int size;
+    //match_pdf_text(filename, ".*Install.*", zoom, &rtv, &size);
+
     return 0;
 }
