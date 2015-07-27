@@ -183,6 +183,8 @@ render(char *filename, int pagenumber, int zoom, int rotation, int write_file,
     fz_drop_pixmap(ctx, pix);
     fz_drop_page(ctx, page);
 
+    fz_empty_store(ctx);
+
     return reti; // 0 means match!
 }
 
