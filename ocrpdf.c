@@ -83,9 +83,11 @@ static PyObject * pyocr_match_pdf_chip(PyObject *self, PyObject *args){
 
     if(x0 + x1 <= 1){
         PyErr_Format(PyExc_ValueError, "Error, x0+x1 <= 1");
+        free(chip_bounds);
         return NULL;
     } else if(y0 + y1 <= 1){
         PyErr_Format(PyExc_ValueError, "Error, y0+y1 <= 1");
+        free(chip_bounds);
         return NULL;
     }
     match_pdf_text(filename, regex, zoom, &rtv, &size, 1, *chip_bounds);
