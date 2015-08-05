@@ -37,3 +37,9 @@ from ocrpdf import ocr_match
 rtv = ocr_match('<filename>', '<regex>', <zoom_level>)
 ```
 Will iterate through pages looking for a regex match and return a boolean tuple of pages where the string is found. It will also store png files in the same folder as the pdf.
+
+```
+from ocrpdf import ocr_match
+rtv = ocr_chip('<filename>', '<regex>', <zoom_level>, x0, y0, x1, y1)
+```
+Works similar to ocr_match, however, it will only search on a chipout of the image as defined by x0, y0, x1, y1. Where each of [x0, y0, x1, y1] correspond to a percentage of (left, top, right, bottom) of the image from [0,1]. Note that x0+x1 > 1 and y0+y1 > 1.
