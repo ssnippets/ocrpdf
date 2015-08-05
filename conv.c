@@ -80,7 +80,6 @@ void _my_release(){
     fz_drop_context(ctx);
     TessBaseAPIEnd(tessAPI);
     TessBaseAPIDelete(tessAPI);
-    //   free(text);
 
     if(has_re){
         regfree(&re);
@@ -95,7 +94,7 @@ int get_pagecount(char* filename){
 }
     int
 render(char *filename, int pagenumber, int zoom, int rotation, int write_file,
-        int do_chipout){
+        int do_chipout, fz_rect chip_bounds){
     fz_page *page;
     fz_matrix transform;
     fz_rect bounds;
@@ -129,10 +128,16 @@ render(char *filename, int pagenumber, int zoom, int rotation, int write_file,
 
     fz_round_rect(&bbox, &bounds);
 
-    //chipout bottom left corner:
     if(do_chipout){
-        bbox.y0 =  bbox.y1 - bbox.y1/5;
-        bbox.x1 = bbox.x1/3;
+        // look at chip_bounds and calculate bbox from them:
+        bbox.x0 = (int) (bbox.x1 - bbox.x1*chip_bounds.x0);
+        bbox.y0 = (int) (bbox.y1 - bbox.y1*chip_bounds.y0);
+        
+        bbox.x1 = (int) (bbox.x1 - bbox.x1*(1-chip_bounds.x1));
+        bbox.y1 = (int) (bbox.y1 - bbox.y1*(1-chip_bounds.y1));
+
+        //bbox.y0 =  bbox.y1 - bbox.y1/5;
+        //bbox.x1 = bbox.x1/3;
     }
 
     pix = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), &bbox);
@@ -167,17 +172,17 @@ render(char *filename, int pagenumber, int zoom, int rotation, int write_file,
     int reti = 1;
     if(has_re){
         reti = regexec(&re, tmptxt, 0, NULL, 0);
-
-        if(!reti){
-            // Save the pixmap to a file.
-            int len = strlen(filename) + strlen(FNAME_FMT) + 32;
-            char* _tmpfname = (char*) malloc(len*sizeof(char));
-            sprintf(_tmpfname, FNAME_FMT, filename, pagenumber);
-            fz_write_png(ctx, pix, _tmpfname, 0);
-            free(_tmpfname);
-
-        }
     }
+    if(!reti || write_file){
+        // Save the pixmap to a file.
+        int len = strlen(filename) + strlen(FNAME_FMT) + 32;
+        char* _tmpfname = (char*) malloc(len*sizeof(char));
+        sprintf(_tmpfname, FNAME_FMT, filename, pagenumber);
+        fz_write_png(ctx, pix, _tmpfname, 0);
+        free(_tmpfname);
+
+    }
+    
 
     TessDeleteText(tmptxt);
     fz_drop_pixmap(ctx, pix);
@@ -205,8 +210,6 @@ char* readFromImage(fz_pixmap *pix){
         die("Error in Tesseract recognition\n");
     if((imgtext = TessBaseAPIGetUTF8Text(tessAPI)) == NULL)
         die("Error getting text\n");
-    //concat_str(text, imgtext);
-    //TessDeleteText(imgtext);
 
     return imgtext; // NEEDS CLEANED
 }
@@ -221,7 +224,7 @@ void concat_str(char* dest, char* src){
     text = tmp;
 }
 
-char* iterate(char* filename, int zoom, int rotation){
+char* iterate(char* filename, int zoom, int rotation, int chipout, fz_rect chip_bounds){
     _my_init(filename);
     if(doc == NULL){
         text = (char*) malloc(32*sizeof(char));
@@ -233,16 +236,15 @@ char* iterate(char* filename, int zoom, int rotation){
     int i;
     for(i = 0; i < page_count; i++){
         render(filename/*filename*/, i/*page*/, zoom/*zoom*/, 
-                rotation/*rotation*/, 1/*write_file*/, 0/*chipout*/);
+                rotation/*rotation*/, 1/*write_file*/, chipout/*chipout*/,
+                chip_bounds);
     }
-    //   fputs(text, stdout);
-
     _my_release();
     return text;
 }
 
 void match_pdf_text(char* filename, char* regex, int zoom, int** rtv, 
-        int* size){
+        int* size, int chipout, fz_rect chip_bounds){
     _my_init(filename);
     // compile regex:
     int reti = regcomp(&re, regex, REG_EXTENDED);
@@ -262,7 +264,8 @@ void match_pdf_text(char* filename, char* regex, int zoom, int** rtv,
     int i;
     for(i = 0; i < page_count; i++){
         int curr = render(filename/*filename*/, i/*page*/, zoom/*zoom*/,
-                0/*rotation*/, 1/*write_file*/, 0/*chipout*/);
+                0/*rotation*/, 1/*write_file*/, chipout/*chipout*/,
+                chip_bounds);
         _rtv[i] = (int)curr;
     }
     _my_release();
@@ -276,13 +279,48 @@ void match_pdf_text(char* filename, char* regex, int zoom, int** rtv,
 
 int main(int argc, char **argv)
 {
+    if(argc < 2){
+        printf("Usage: ./conv filename [x0 y0 x1 y1]\n"
+                 "where x0 = %% from left to chip out\n"
+                 "      y0 = %% from top to chip out\n"
+                 "      x1 = %% from right to chip out\n"
+                 "      y1 = %% from bottom to chip out.\n ");
+    }
     char *filename = argv[1];
     int zoom = 200;
     int rotation = 0;
 
-    text = iterate(filename, zoom, rotation);
+    fz_rect* chip_bounds = (fz_rect*) malloc(sizeof(fz_rect));
+    chip_bounds->x0 = 1;
+    chip_bounds->y0 = 1;
+    chip_bounds->x1 = 1;
+    chip_bounds->y1 = 1;
+    int chipout = 0;
+
+    if(argc > 5){
+        // get chipout params:
+        char * x0 = argv[2];
+        char * y0 = argv[3];
+        char * x1 = argv[4];
+        char * y1 = argv[5];
+        float x0f, y0f, x1f, y1f;
+        x0f = strtof(x0, NULL);
+        y0f = strtof(y0, NULL);
+        x1f = strtof(x1, NULL);
+        y1f = strtof(y1, NULL);
+        chip_bounds->x0 = x0f;
+        chip_bounds->y0 = y0f;
+        chip_bounds->x1 = x1f;
+        chip_bounds->y1 = y1f;
+        chipout = 1;
+
+        printf("Parsing the following bounds: %f %f %f %f\n from: %s %s %s %s\n", 
+                x0f, y0f, x1f, y1f, x0, y0, x1, y1);
+    }
+    text = iterate(filename, zoom, rotation, chipout, *chip_bounds);
     puts(text);
     free(text);
+    free(chip_bounds);
 
     //Matching text in page:
     //int* rtv;
